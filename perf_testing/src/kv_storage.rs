@@ -56,6 +56,10 @@ impl<'a> Storage<'a> {
     pub(crate) fn total_keys(&self) -> u64 {
         self.db.iterator(IteratorMode::Start).count() as u64
     }
+
+    pub(crate) fn put(&mut self, key: Key) {
+        self.db.put(key.key, Storage::EMPTY_KEY).unwrap()
+    }
 }
 
 pub(crate) struct StorageReader {

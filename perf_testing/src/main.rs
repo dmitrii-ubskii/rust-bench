@@ -36,7 +36,7 @@ fn load_set_ordered(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
     debug_assert_eq!(set.len(), count as usize);
     Measurement::new(
         count as u64, KEY_SIZE as u64,
-        (count as u64) * (KEY_SIZE as u64), end.duration_since(start)
+        (count as u64) * (KEY_SIZE as u64), end.duration_since(start),
     )
 }
 
@@ -62,7 +62,7 @@ fn load_set_batch_ordered(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
     debug_assert_eq!(set.len(), count as usize);
     Measurement::new(
         count as u64, KEY_SIZE as u64,
-    (count as u64) * (KEY_SIZE as u64), end.duration_since(start)
+        (count as u64) * (KEY_SIZE as u64), end.duration_since(start),
     )
 }
 
@@ -77,7 +77,7 @@ fn load_set_random(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
     debug_assert_eq!(set.len(), count as usize);
     Measurement::new(
         count, KEY_SIZE as u64,
-        (count) * (KEY_SIZE as u64), end.duration_since(start)
+        (count) * (KEY_SIZE as u64), end.duration_since(start),
     )
 }
 
@@ -92,11 +92,11 @@ fn fill_memtable(memtable: &mut Memtable) -> Measurement {
     debug_assert_eq!(memtable.len(), memtable.max_keys() as usize);
     Measurement::new(
         memtable.len() as u64, KEY_SIZE as u64,
-        (memtable.len() as u64) * (KEY_SIZE as u64), end.duration_since(start)
+        (memtable.len() as u64) * (KEY_SIZE as u64), end.duration_since(start),
     )
 }
 
-const READER_LOG_PERIOD: u64= 10_000;
+const READER_LOG_PERIOD: u64 = 10_000;
 
 fn read_random_full_keys(reader: StorageReader, stop: Arc<AtomicBool>) {
     let mut rng = rand::thread_rng();
@@ -106,7 +106,7 @@ fn read_random_full_keys(reader: StorageReader, stop: Arc<AtomicBool>) {
 
     let mut current = start.clone();
     while !stop.load(Ordering::Relaxed) {
-        let key = Key{ key: rng.gen() };
+        let key = Key { key: rng.gen() };
         attempts = attempts + 1;
         match reader.get(key) {
             Some(_) => matches = matches + 1,
@@ -141,7 +141,7 @@ fn read_prefix_iter(reader: StorageReader, stop: Arc<AtomicBool>) {
         let read = reader.iterate_10(prefix);
         iterated = iterated + (read as u64);
         match read {
-            0 => {},
+            0 => {}
             _ => matches = matches + 1,
         }
 
@@ -160,10 +160,12 @@ fn read_prefix_iter(reader: StorageReader, stop: Arc<AtomicBool>) {
 }
 
 fn main() {
-    const MAX_SIZE_BYTES: u64 = 64_000_000;
+    const SST_SIZE_TARGET: u64 = 64_000_000;
+    const SST_COUNT: u64 = 1000;
     let dir_name = "testing-store";
     let mut options = Options::default();
     options.create_if_missing(true);
+    options.enable_statistics();
     let mut storage = Storage::new(dir_name, &mut options);
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -172,33 +174,16 @@ fn main() {
     thread::spawn(move || {
         read_random_full_keys(reader_keys, stop_keys);
     });
-    let reader_prefixes= storage.new_reader();
+    let reader_prefixes = storage.new_reader();
     let stop_prefixes = stop.clone();
     thread::spawn(move || {
         read_prefix_iter(reader_prefixes, stop_prefixes);
     });
 
     let start = Instant::now();
-    for i in (0..1000) {
-        println!("---Iteration {} ---", i);
-        let mut memtable = Memtable::new(MAX_SIZE_BYTES);
-        let fill_measurement = fill_memtable(&mut memtable);
-        println!("Memtable fill: {}", fill_measurement);
-        let (sst_measurement, ingest_measurement)= storage.write_to_sst_and_ingest(memtable).unwrap();
-        println!("SST write: {}", sst_measurement);
-        println!("SST ingest: {}", ingest_measurement);
+    // write_memtables_to_storage(&mut storage, SST_SIZE_TARGET, SST_COUNT);
+    write_direct_to_storage(&mut storage, SST_SIZE_TARGET * SST_COUNT / KEY_SIZE as u64, SST_SIZE_TARGET / KEY_SIZE as u64);
 
-
-        // let mut set_random = BTreeSet::new();
-        // let measurement_random = load_set_random(&mut set_random, COUNT);
-        // println!("Elapsed random: {}", measurement_random);
-        // let mut set_ordered = BTreeSet::new();
-        // let measurement_ordered = load_set_ordered(&mut set_ordered, COUNT);
-        // println!("Elapsed ordered: {}", measurement_ordered);
-        // let mut batch_ordered = BTreeSet::new();
-        // let measurement_batch_ordered = load_set_batch_ordered(&mut batch_ordered, COUNT);
-        // println!("Elapsed batch ordered: {}", measurement_batch_ordered);
-    }
     stop.store(true, Ordering::Relaxed);
     let end = Instant::now();
     println!("Total time: {}", end.duration_since(start).as_secs_f64());
@@ -207,4 +192,37 @@ fn main() {
     let count = storage.total_keys();
     let end = Instant::now();
     println!("Total keys in db: {}, in time: {}", count, end.duration_since(start).as_secs_f64());
+}
+
+fn write_memtables_to_storage(storage: &mut Storage, sst_size_target: u64, sst_count: u64) {
+    for i in (0..sst_count) {
+        println!("---Iteration {} ---", i);
+        let mut memtable = Memtable::new(sst_size_target);
+        let fill_measurement = fill_memtable(&mut memtable);
+        println!("Memtable fill: {}", fill_measurement);
+        let (sst_measurement, ingest_measurement) = storage.write_to_sst_and_ingest(memtable).unwrap();
+        println!("SST write: {}", sst_measurement);
+        println!("SST ingest: {}", ingest_measurement);
+    }
+}
+
+
+fn write_direct_to_storage(storage: &mut Storage, key_count: u64, batch_size: u64) {
+    let mut iteration: u64 = 0;
+    for _ in (0..key_count).step_by(batch_size as usize) {
+        println!("---Iteration {} ---", iteration);
+        let mut rng = rand::thread_rng();
+        let generated: Vec<Key> = (0..batch_size).map(|_| Key { key: rng.gen() }).collect();
+        let start = Instant::now();
+        for key in generated {
+            storage.put(key);
+        }
+        let end = Instant::now();
+        let storage_write_measurement = Measurement::new(
+            batch_size, KEY_SIZE as u64,
+            (batch_size) * (KEY_SIZE as u64), end.duration_since(start),
+        );
+        iteration = iteration + 1;
+        println!("Storage batch write: {}", storage_write_measurement);
+    }
 }
