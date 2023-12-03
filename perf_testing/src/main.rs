@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use rand::Rng;
 use std::time::{Duration, Instant};
-use speedb::{Error, Options};
+use speedb::{Error, Options, WriteBatch, WriteOptions};
 use crate::key::{Key, KEY_SIZE};
 use crate::kv_storage::{Storage, StorageReader};
 use crate::measurement::Measurement;
@@ -209,13 +209,15 @@ fn write_memtables_to_storage(storage: &mut Storage, sst_size_target: u64, sst_c
 
 fn write_direct_to_storage(storage: &mut Storage, key_count: u64, batch_size: u64) {
     let mut iteration: u64 = 0;
+    let mut write_options = WriteOptions::new();
+    write_options.disable_wal(true);
     for _ in (0..key_count).step_by(batch_size as usize) {
         println!("---Iteration {} ---", iteration);
         let mut rng = rand::thread_rng();
         let generated: Vec<Key> = (0..batch_size).map(|_| Key { key: rng.gen() }).collect();
         let start = Instant::now();
-        for key in generated {
-            storage.put(key);
+        for keys in generated.chunks(100) {
+            storage.put(keys);
         }
         let end = Instant::now();
         let storage_write_measurement = Measurement::new(

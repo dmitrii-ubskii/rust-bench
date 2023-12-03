@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Instant;
-use speedb::{DB, DBCommon, DBIteratorWithThreadMode, DBWithThreadMode, Direction, Error, IteratorMode, Options, SingleThreaded, SstFileWriter};
+use speedb::{DB, DBCommon, DBIteratorWithThreadMode, DBWithThreadMode, Direction, Error, IteratorMode, Options, SingleThreaded, SstFileWriter, WriteBatch, WriteOptions};
 use speedb::Direction::Forward;
 use speedb::IteratorMode::From;
 use crate::key::{Key, KEY_SIZE};
@@ -15,6 +15,7 @@ pub(crate) struct Storage<'a> {
     options: &'a Options,
     sst_writer: SstFileWriter<'a>,
     sst_counter: usize,
+    write_options: WriteOptions,
 }
 
 impl<'a> Storage<'a> {
@@ -24,11 +25,14 @@ impl<'a> Storage<'a> {
     pub(crate) fn new(path: &str, options: &'a mut Options) -> Storage<'a> {
         let db: DBWithThreadMode<SingleThreaded>  = DB::open(options, path).unwrap();
         let writer: SstFileWriter<'a> = SstFileWriter::create(options);
+        let mut write_options = WriteOptions::default();
+        write_options.disable_wal(true);
         Storage {
             db: Arc::new(db),
             sst_writer: writer,
             options: options,
             sst_counter: 0,
+            write_options: write_options,
         }
     }
 
@@ -57,8 +61,10 @@ impl<'a> Storage<'a> {
         self.db.iterator(IteratorMode::Start).count() as u64
     }
 
-    pub(crate) fn put(&mut self, key: Key) {
-        self.db.put(key.key, Storage::EMPTY_KEY).unwrap()
+    pub(crate) fn put(&mut self, keys: &[Key]) {
+        let mut write_batch = WriteBatch::default();
+        keys.iter().for_each(|key| write_batch.put(key.key, Storage::EMPTY_KEY));
+        self.db.write_opt(write_batch, &self.write_options);
     }
 }
 
