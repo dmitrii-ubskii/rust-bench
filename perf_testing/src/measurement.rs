@@ -9,8 +9,6 @@ pub(crate) struct Measurement {
 }
 
 impl Measurement {
-    const NANOS_PER_SECOND: u128 = 1_000 * 1_000 * 1_000;
-
     pub(crate) fn new(key_count: u64, key_size: u64, written_bytes: u64, duration: Duration) -> Measurement {
         Measurement { key_count, key_size, written_bytes, duration }
     }

@@ -1,4 +1,4 @@
-mod sorted_array;
+// mod sorted_array;
 mod key;
 mod memtable;
 mod measurement;
@@ -8,11 +8,14 @@ use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
 use std::ops::DerefMut;
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
 use rand::Rng;
 use std::time::{Duration, Instant};
-use speedb::Options;
+use speedb::{Error, Options};
 use crate::key::{Key, KEY_SIZE};
-use crate::kv_storage::Storage;
+use crate::kv_storage::{Storage, StorageReader};
 use crate::measurement::Measurement;
 use crate::memtable::{Memtable};
 
@@ -93,15 +96,90 @@ fn fill_memtable(memtable: &mut Memtable) -> Measurement {
     )
 }
 
+const READER_LOG_PERIOD: u64= 10_000;
+
+fn read_random_full_keys(reader: StorageReader, stop: Arc<AtomicBool>) {
+    let mut rng = rand::thread_rng();
+    let mut attempts: u64 = 0;
+    let mut matches: u64 = 0;
+    let start = Instant::now();
+
+    let mut current = start.clone();
+    while !stop.load(Ordering::Relaxed) {
+        let key = Key{ key: rng.gen() };
+        attempts = attempts + 1;
+        match reader.get(key) {
+            Some(_) => matches = matches + 1,
+            None => {}
+        }
+
+        if attempts % READER_LOG_PERIOD == 0 {
+            let now = Instant::now();
+            let duration = now.duration_since(current).as_secs_f64();
+            let rate = READER_LOG_PERIOD as f64 / duration;
+            println!("Get rate\t: {:.2} reads/sec", rate);
+            current = now;
+        }
+    }
+    let end = Instant::now();
+    let duration = end.duration_since(start).as_secs_f64();
+    let rate = (attempts as f64) / duration;
+    println!("Total of {} get queries, which matched {} times, in {:2} seconds. Average get rate: {:.2} reads/sec", attempts, matches, duration, rate);
+}
+
+fn read_prefix_iter(reader: StorageReader, stop: Arc<AtomicBool>) {
+    let mut rng = rand::thread_rng();
+    let mut attempts: u64 = 0;
+    let mut matches: u64 = 0;
+    let mut iterated: u64 = 0;
+    let start = Instant::now();
+
+    let mut current = start.clone();
+    while !stop.load(Ordering::Relaxed) {
+        let prefix: [u8; 16] = rng.gen();
+        attempts = attempts + 1;
+        let read = reader.iterate_10(prefix);
+        iterated = iterated + (read as u64);
+        match read {
+            0 => {},
+            _ => matches = matches + 1,
+        }
+
+        if attempts % READER_LOG_PERIOD == 0 {
+            let now = Instant::now();
+            let duration = now.duration_since(current).as_secs_f64();
+            let rate = READER_LOG_PERIOD as f64 / duration;
+            println!("Prefix rate\t: {:.2} reads/sec", rate);
+            current = now;
+        }
+    }
+    let end = Instant::now();
+    let duration = end.duration_since(start).as_secs_f64();
+    let rate = (attempts as f64) / duration;
+    println!("Did {} prefix queries, which matched >=1 element {} times for a total of {}, in {:2} seconds. Rate of prefix seeks: {:.2} reads/sec", attempts, matches, iterated, duration, rate);
+}
 
 fn main() {
-    const MAX_SIZE_BYTES: u64 = 256_000_000;
+    const MAX_SIZE_BYTES: u64 = 64_000_000;
     let dir_name = "testing-store";
     let mut options = Options::default();
     options.create_if_missing(true);
     let mut storage = Storage::new(dir_name, &mut options);
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let reader_keys = storage.new_reader();
+    let stop_keys = stop.clone();
+    thread::spawn(move || {
+        read_random_full_keys(reader_keys, stop_keys);
+    });
+    let reader_prefixes= storage.new_reader();
+    let stop_prefixes = stop.clone();
+    thread::spawn(move || {
+        read_prefix_iter(reader_prefixes, stop_prefixes);
+    });
+
     let start = Instant::now();
-    for i in (0..100) {
+    for i in (0..1000) {
         println!("---Iteration {} ---", i);
         let mut memtable = Memtable::new(MAX_SIZE_BYTES);
         let fill_measurement = fill_memtable(&mut memtable);
@@ -121,8 +199,9 @@ fn main() {
         // let measurement_batch_ordered = load_set_batch_ordered(&mut batch_ordered, COUNT);
         // println!("Elapsed batch ordered: {}", measurement_batch_ordered);
     }
+    stop.store(true, Ordering::Relaxed);
     let end = Instant::now();
-    println!("Total time: {}", end.duration_since(start).as_secs());
+    println!("Total time: {}", end.duration_since(start).as_secs_f64());
 
     let start = Instant::now();
     let count = storage.total_keys();
