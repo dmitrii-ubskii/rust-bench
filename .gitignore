@@ -1,0 +1,23 @@
+
+# Mac files #
+.DS_Store
+
+# Bazel files #
+bazel-*
+.bazel-remote-cache.rc
+.bazel-cache-credential.json
+
+# IDE files #
+.ijwb/
+.idea/
+*.iml
+*.geany
+
+# VS Code files #
+.vscode/
+.settings/
+.project
+.classpath
+
+# Compiled files #
+target/
