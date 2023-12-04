@@ -207,8 +207,12 @@ fn write_direct_to_storage(storage: &mut Storage, key_count: usize, batch_size: 
     write_options.disable_wal(true);
     for (iteration, _) in (0..key_count).step_by(batch_size).enumerate() {
         println!("---Iteration {} ---", iteration);
-        let mut rng = rand::thread_rng();
-        let generated: Vec<Key> = (0..batch_size).map(|_| Key { key: rng.gen() }).collect();
+        let mut rng = thread_rng();
+        let generated = {
+            let mut keys = Keys(vec![Key { key: [0; KEY_SIZE] }; batch_size]);
+            rng.fill(&mut keys);
+            keys.0
+        };
         let start = Instant::now();
         for keys in generated.chunks(100) {
             storage.put(keys);
