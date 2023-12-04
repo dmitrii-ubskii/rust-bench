@@ -1,24 +1,23 @@
-use std::collections::{BTreeSet};
-use std::collections::btree_set::Iter;
+use std::collections::{btree_set::Iter, BTreeSet};
+
 use crate::key::{Key, KEY_SIZE};
 
 pub(crate) struct Memtable {
     data: BTreeSet<Key>,
-    // max_size_bytes: u64,
-    max_keys: u64
+    max_keys: usize,
 }
 
 impl Memtable {
-    pub(crate) fn new(max_size_bytes: u64) -> Memtable {
-        Memtable{ data: BTreeSet::new(), max_keys: max_size_bytes / KEY_SIZE as u64 }
+    pub(crate) fn new(max_size_bytes: usize) -> Memtable {
+        Memtable { data: BTreeSet::new(), max_keys: max_size_bytes / KEY_SIZE }
     }
 
-    pub(crate) fn max_keys(&self) -> u64 {
+    pub(crate) fn max_keys(&self) -> usize {
         self.max_keys
     }
 
     pub(crate) fn put(&mut self, key: Key) {
-        assert!((self.data.len() as u64) < self.max_keys);
+        assert!(self.data.len() < self.max_keys);
         self.data.insert(key);
     }
 

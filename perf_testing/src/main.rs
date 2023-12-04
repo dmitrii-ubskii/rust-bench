@@ -1,28 +1,32 @@
-// mod sorted_array;
 mod key;
-mod memtable;
-mod measurement;
 mod kv_storage;
+mod measurement;
+mod memtable;
 
-use std::collections::BTreeSet;
-use std::fmt::{Display, Formatter};
-use std::ops::DerefMut;
-use std::path::Path;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread;
-use rand::Rng;
-use std::time::{Duration, Instant};
-use speedb::{Error, Options, WriteBatch, WriteOptions};
-use crate::key::{Key, KEY_SIZE};
-use crate::kv_storage::{Storage, StorageReader};
-use crate::measurement::Measurement;
-use crate::memtable::{Memtable};
+use std::{
+    collections::BTreeSet,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::Instant,
+};
 
+use rand::{thread_rng, Rng};
+use speedb::{Options, WriteOptions};
 
-fn load_set_ordered(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
+use crate::{
+    key::{Key, Keys, KEY_SIZE},
+    kv_storage::{Storage, StorageReader},
+    measurement::Measurement,
+    memtable::Memtable,
+};
+
+#[allow(dead_code)]
+fn load_set_ordered(set: &mut BTreeSet<Key>, count: usize) -> Measurement {
     let mut generated: Vec<Key> = vec![];
-    for i in (0..count) {
+    for i in 0..count {
         let mut key: [u8; KEY_SIZE] = [0; KEY_SIZE];
         let bytes = i.to_be_bytes();
         key[..bytes.len()].copy_from_slice(bytes.as_slice());
@@ -33,15 +37,13 @@ fn load_set_ordered(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
         set.insert(key);
     }
     let end = Instant::now();
-    debug_assert_eq!(set.len(), count as usize);
-    Measurement::new(
-        count as u64, KEY_SIZE as u64,
-        (count as u64) * (KEY_SIZE as u64), end.duration_since(start),
-    )
+    debug_assert_eq!(set.len(), count);
+    Measurement::new(count, KEY_SIZE, (count * KEY_SIZE) as u64, end.duration_since(start))
 }
 
-fn load_set_batch_ordered(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
-    let mut rng = rand::thread_rng();
+#[allow(dead_code)]
+fn load_set_batch_ordered(set: &mut BTreeSet<Key>, count: usize) -> Measurement {
+    let mut rng = thread_rng();
     const BATCH: usize = 10;
     let mut generated: Vec<BTreeSet<Key>> = vec![];
     for _ in (0..count).step_by(BATCH) {
@@ -50,68 +52,52 @@ fn load_set_batch_ordered(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
     }
     println!("Created batches: {}, {}", generated.len(), BATCH);
     let start = Instant::now();
-    generated.into_iter().enumerate().for_each(|(i, batch)| {
-        // set.append(batch);
-        set.extend(batch.into_iter());
-        // if i % 1000 == 0 {
-        //     println!("Batch nr: {}", i);
-        //     println!("Set size: {}", set.len());
-        // }
+    generated.into_iter().for_each(|batch| {
+        set.extend(batch);
     });
     let end = Instant::now();
-    debug_assert_eq!(set.len(), count as usize);
-    Measurement::new(
-        count as u64, KEY_SIZE as u64,
-        (count as u64) * (KEY_SIZE as u64), end.duration_since(start),
-    )
+    debug_assert_eq!(set.len(), { count });
+    Measurement::new(count, KEY_SIZE, (count * KEY_SIZE) as u64, end.duration_since(start))
 }
 
-fn load_set_random(set: &mut BTreeSet<Key>, count: u64) -> Measurement {
-    let mut rng = rand::thread_rng();
+#[allow(dead_code)]
+fn load_set_random(set: &mut BTreeSet<Key>, count: usize) -> Measurement {
+    let mut rng = thread_rng();
     let generated: Vec<Key> = (0..count).map(|_| Key { key: rng.gen() }).collect();
     let start = Instant::now();
     for key in generated {
         set.insert(key);
     }
     let end = Instant::now();
-    debug_assert_eq!(set.len(), count as usize);
-    Measurement::new(
-        count, KEY_SIZE as u64,
-        (count) * (KEY_SIZE as u64), end.duration_since(start),
-    )
+    debug_assert_eq!(set.len(), { count });
+    Measurement::new(count, KEY_SIZE, (count * KEY_SIZE) as u64, end.duration_since(start))
 }
 
 fn fill_memtable(memtable: &mut Memtable) -> Measurement {
-    let mut rng = rand::thread_rng();
+    let mut rng = thread_rng();
     let generated: Vec<Key> = (0..memtable.max_keys()).map(|_| Key { key: rng.gen() }).collect();
     let start = Instant::now();
     for key in generated {
         memtable.put(key);
     }
     let end = Instant::now();
-    debug_assert_eq!(memtable.len(), memtable.max_keys() as usize);
-    Measurement::new(
-        memtable.len() as u64, KEY_SIZE as u64,
-        (memtable.len() as u64) * (KEY_SIZE as u64), end.duration_since(start),
-    )
+    debug_assert_eq!(memtable.len(), { memtable.max_keys() });
+    Measurement::new(memtable.len(), KEY_SIZE, (memtable.len() * KEY_SIZE) as u64, end.duration_since(start))
 }
 
-const READER_LOG_PERIOD: u64 = 10_000;
+const READER_LOG_PERIOD: usize = 10_000;
 
 fn read_random_full_keys(reader: StorageReader, stop: Arc<AtomicBool>) {
-    let mut rng = rand::thread_rng();
-    let mut attempts: u64 = 0;
-    let mut matches: u64 = 0;
+    let mut rng = thread_rng();
+    let mut attempts: usize = 0;
+    let mut matches: usize = 0;
     let start = Instant::now();
 
-    let mut current = start.clone();
+    let mut current = start;
     while !stop.load(Ordering::Relaxed) {
         let key = Key { key: rng.gen() };
-        attempts = attempts + 1;
-        match reader.get(key) {
-            Some(_) => matches = matches + 1,
-            None => {}
-        }
+        attempts += 1;
+        matches += reader.get(key).is_some() as usize;
 
         if attempts % READER_LOG_PERIOD == 0 {
             let now = Instant::now();
@@ -124,26 +110,24 @@ fn read_random_full_keys(reader: StorageReader, stop: Arc<AtomicBool>) {
     let end = Instant::now();
     let duration = end.duration_since(start).as_secs_f64();
     let rate = (attempts as f64) / duration;
-    println!("Total of {} get queries, which matched {} times, in {:2} seconds. Average get rate: {:.2} reads/sec", attempts, matches, duration, rate);
+    println!(
+        "Total of {} get queries, which matched {} times, in {:2} seconds. Average get rate: {:.2} reads/sec",
+        attempts, matches, duration, rate
+    );
 }
 
 fn read_prefix_iter(reader: StorageReader, stop: Arc<AtomicBool>) {
-    let mut rng = rand::thread_rng();
-    let mut attempts: u64 = 0;
-    let mut matches: u64 = 0;
-    let mut iterated: u64 = 0;
+    let mut rng = thread_rng();
+    let mut matches: usize = 0;
+    let mut iterated: usize = 0;
     let start = Instant::now();
 
-    let mut current = start.clone();
-    while !stop.load(Ordering::Relaxed) {
+    let mut current = start;
+    for attempts in 0.. {
         let prefix: [u8; 16] = rng.gen();
-        attempts = attempts + 1;
         let read = reader.iterate_10(prefix);
-        iterated = iterated + (read as u64);
-        match read {
-            0 => {}
-            _ => matches = matches + 1,
-        }
+        iterated += read as usize;
+        matches += (read == 0) as usize;
 
         if attempts % READER_LOG_PERIOD == 0 {
             let now = Instant::now();
@@ -152,22 +136,30 @@ fn read_prefix_iter(reader: StorageReader, stop: Arc<AtomicBool>) {
             println!("Prefix rate\t: {:.2} reads/sec", rate);
             current = now;
         }
+
+        if stop.load(Ordering::Relaxed) {
+            let duration = start.elapsed().as_secs_f64();
+            let rate = (attempts as f64) / duration;
+            print!(
+                "Did {attempts} prefix queries, which matched >=1 element {matches} times for a total of {iterated}, "
+            );
+            print!("in {duration:2} seconds. ");
+            println!("Rate of prefix seeks: {rate:.2} reads/sec");
+            break;
+        }
     }
-    let end = Instant::now();
-    let duration = end.duration_since(start).as_secs_f64();
-    let rate = (attempts as f64) / duration;
-    println!("Did {} prefix queries, which matched >=1 element {} times for a total of {}, in {:2} seconds. Rate of prefix seeks: {:.2} reads/sec", attempts, matches, iterated, duration, rate);
 }
 
 fn main() {
-    const SST_SIZE_TARGET: u64 = 64_000_000;
-    const SST_COUNT: u64 = 1000;
+    const SST_SIZE_TARGET: usize = 64_000_000;
+    const SST_COUNT: usize = 10;
     let dir_name = "testing-store";
+    std::fs::remove_dir_all(dir_name).expect("could not remove data dir");
     let mut options = Options::default();
     options.create_if_missing(true);
     options.enable_statistics();
-    options.set_max_background_jobs(8);
-    options.set_max_subcompactions(8);
+    options.set_max_background_jobs(4);
+    options.set_max_subcompactions(4);
     let mut storage = Storage::new(dir_name, &mut options);
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -184,7 +176,7 @@ fn main() {
 
     let start = Instant::now();
     write_memtables_to_storage(&mut storage, SST_SIZE_TARGET, SST_COUNT);
-    // write_direct_to_storage(&mut storage, SST_SIZE_TARGET * SST_COUNT / KEY_SIZE as u64, SST_SIZE_TARGET / KEY_SIZE as u64);
+    // write_direct_to_storage(&mut storage, SST_SIZE_TARGET * SST_COUNT / KEY_SIZE, SST_SIZE_TARGET / KEY_SIZE);
 
     stop.store(true, Ordering::Relaxed);
     let end = Instant::now();
@@ -196,8 +188,9 @@ fn main() {
     println!("Total keys in db: {}, in time: {}", count, end.duration_since(start).as_secs_f64());
 }
 
-fn write_memtables_to_storage(storage: &mut Storage, sst_size_target: u64, sst_count: u64) {
-    for i in (0..sst_count) {
+#[allow(dead_code)]
+fn write_memtables_to_storage(storage: &mut Storage, sst_size_target: usize, sst_count: usize) {
+    for i in 0..sst_count {
         println!("---Iteration {} ---", i);
         let mut memtable = Memtable::new(sst_size_target);
         let fill_measurement = fill_memtable(&mut memtable);
@@ -208,12 +201,11 @@ fn write_memtables_to_storage(storage: &mut Storage, sst_size_target: u64, sst_c
     }
 }
 
-
-fn write_direct_to_storage(storage: &mut Storage, key_count: u64, batch_size: u64) {
-    let mut iteration: u64 = 0;
+#[allow(dead_code)]
+fn write_direct_to_storage(storage: &mut Storage, key_count: usize, batch_size: usize) {
     let mut write_options = WriteOptions::new();
     write_options.disable_wal(true);
-    for _ in (0..key_count).step_by(batch_size as usize) {
+    for (iteration, _) in (0..key_count).step_by(batch_size).enumerate() {
         println!("---Iteration {} ---", iteration);
         let mut rng = rand::thread_rng();
         let generated: Vec<Key> = (0..batch_size).map(|_| Key { key: rng.gen() }).collect();
@@ -222,11 +214,8 @@ fn write_direct_to_storage(storage: &mut Storage, key_count: u64, batch_size: u6
             storage.put(keys);
         }
         let end = Instant::now();
-        let storage_write_measurement = Measurement::new(
-            batch_size, KEY_SIZE as u64,
-            (batch_size) * (KEY_SIZE as u64), end.duration_since(start),
-        );
-        iteration = iteration + 1;
+        let storage_write_measurement =
+            Measurement::new(batch_size, KEY_SIZE, (batch_size * KEY_SIZE) as u64, end.duration_since(start));
         println!("Storage batch write: {}", storage_write_measurement);
     }
 }
