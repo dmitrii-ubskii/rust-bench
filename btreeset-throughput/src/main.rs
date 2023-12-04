@@ -1,9 +1,8 @@
+use std::{collections::BTreeSet, sync::Mutex, time::Instant};
+
 use crossbeam_skiplist::SkipSet;
 use crossbeam_utils::thread::scope;
-use rand::thread_rng;
-use rand::Rng;
-use std::sync::Mutex;
-use std::{collections::BTreeSet, time::Instant};
+use rand::{thread_rng, Rng};
 
 type Key = [u8; 32];
 const KEY_SIZE: usize = std::mem::size_of::<Key>();
@@ -163,10 +162,7 @@ fn measure(data: &Vec<Key>, f: impl FnOnce(&Vec<Key>)) {
 fn report_throughput(size_mb: usize, now: Instant) {
     let elapsed = now.elapsed();
     println!("Done in {:.3} s", elapsed.as_secs_f64());
-    println!(
-        "Throughput: {:.2} MiB/s",
-        size_mb as f64 / elapsed.as_secs_f64()
-    );
+    println!("Throughput: {:.2} MiB/s", size_mb as f64 / elapsed.as_secs_f64());
     println!();
 }
 

@@ -22,8 +22,7 @@ fn write_benchmark(data: &[u8], _: Duration) {
     let mut file = File::create("./.tmp").expect("could not open ./.tmp for writing");
     let start = Instant::now();
     for chunk in data.chunks(4096) {
-        file.write_all(chunk)
-            .expect("could not write a chunk into ./.tmp");
+        file.write_all(chunk).expect("could not write a chunk into ./.tmp");
     }
     file.sync_all().expect("could not sync file to disk");
     drop(file);
@@ -34,9 +33,6 @@ fn write_benchmark(data: &[u8], _: Duration) {
 fn report_throughput(size: usize, now: Instant) {
     let elapsed = now.elapsed();
     println!("Done in {:.3} s", elapsed.as_secs_f64());
-    println!(
-        "Throughput: {:.2} MiB/s",
-        size as f64 / 1024.0 / 1024.0 / elapsed.as_secs_f64()
-    );
+    println!("Throughput: {:.2} MiB/s", size as f64 / 1024.0 / 1024.0 / elapsed.as_secs_f64());
     println!();
 }
