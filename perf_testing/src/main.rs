@@ -166,6 +166,8 @@ fn main() {
     let mut options = Options::default();
     options.create_if_missing(true);
     options.enable_statistics();
+    options.set_max_background_jobs(8);
+    options.set_max_subcompactions(8);
     let mut storage = Storage::new(dir_name, &mut options);
 
     let stop = Arc::new(AtomicBool::new(false));
@@ -181,8 +183,8 @@ fn main() {
     });
 
     let start = Instant::now();
-    // write_memtables_to_storage(&mut storage, SST_SIZE_TARGET, SST_COUNT);
-    write_direct_to_storage(&mut storage, SST_SIZE_TARGET * SST_COUNT / KEY_SIZE as u64, SST_SIZE_TARGET / KEY_SIZE as u64);
+    write_memtables_to_storage(&mut storage, SST_SIZE_TARGET, SST_COUNT);
+    // write_direct_to_storage(&mut storage, SST_SIZE_TARGET * SST_COUNT / KEY_SIZE as u64, SST_SIZE_TARGET / KEY_SIZE as u64);
 
     stop.store(true, Ordering::Relaxed);
     let end = Instant::now();
