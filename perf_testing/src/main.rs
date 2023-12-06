@@ -99,7 +99,7 @@ fn read_prefix_iter(reader: StorageReader, stop: Arc<AtomicBool>) {
 }
 
 const SST_SIZE_TARGET: usize = 64_000_000;
-const SST_COUNT: usize = 8;
+const SST_COUNT: usize = 320;
 
 fn main() {
     let storage_dir = Path::new("testing-store");
@@ -130,7 +130,9 @@ fn main() {
     // move || read_prefix_iter(reader, stop)
     // });
 
-    test_direct(storage_dir, &options, 4);
+    test_direct(storage_dir, &options, 1, ["cf0", "cf0", "cf0", "cf0"]);
+    test_direct(storage_dir, &options, 4, ["cf0", "cf0", "cf0", "cf0"]);
+    test_direct(storage_dir, &options, 4, ["cf0", "cf1", "cf2", "cf3"]);
     // test_memtables(storage_dir, &options);
 
     // print!("{}", options.get_statistics().unwrap());
@@ -139,7 +141,7 @@ fn main() {
     // prefix_reader_thread.join().unwrap();
 }
 
-fn test_direct(storage_dir: &Path, options: &Options, num_threads: usize) {
+fn test_direct(storage_dir: &Path, options: &Options, num_threads: usize, cfs: [&str; 4]) {
     if storage_dir.exists() {
         std::fs::remove_dir_all(storage_dir).expect("could not remove data dir");
     }
@@ -149,11 +151,13 @@ fn test_direct(storage_dir: &Path, options: &Options, num_threads: usize) {
     let start = Instant::now();
     thread::scope(|s| {
         let storage = &storage;
+        dbg!(num_threads);
         for i in 0..num_threads {
             s.spawn(move || {
+                let cf_name = cfs[i];
                 write_direct_to_storage(
                     storage,
-                    storage.db.cf_handle(&format!("cf{i}")).unwrap(),
+                    storage.db.cf_handle(dbg!(cf_name)).unwrap(),
                     SST_SIZE_TARGET * SST_COUNT / KEY_SIZE / num_threads,
                     SST_SIZE_TARGET / KEY_SIZE / num_threads,
                 )
@@ -216,7 +220,7 @@ fn fill_memtable(memtable: &mut Memtable) -> (Measurement, Vec<Key>) {
 #[allow(dead_code)]
 fn write_direct_to_storage(storage: &Storage, cf: Arc<BoundColumnFamily>, key_count: usize, batch_size: usize) {
     for (iteration, _) in (0..key_count).step_by(batch_size).enumerate() {
-        println!("---Iteration {iteration} ---");
+        // println!("---Iteration {iteration} ---");
         let mut rng = thread_rng();
         let generated: Vec<Key> = {
             let mut keys = Keys(vec![Key { key: [0; KEY_SIZE] }; batch_size]);
@@ -229,6 +233,6 @@ fn write_direct_to_storage(storage: &Storage, cf: Arc<BoundColumnFamily>, key_co
         }
         let storage_write_measurement =
             Measurement::new(batch_size, KEY_SIZE, (batch_size * KEY_SIZE) as u64, start.elapsed());
-        println!("Storage batch write: {storage_write_measurement}");
+        // println!("Storage batch write: {storage_write_measurement}");
     }
 }

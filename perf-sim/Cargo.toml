@@ -1,11 +1,12 @@
 [package]
-name = "perf_testing"
+name = "perf-sim"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+clap = { version = "4.4.11", features = ["cargo"] }
 itertools = "0.12.0"
-rand = { version = "0.8.5", features = [] }
-speedb = {  version = "0.0.4", features = ["multi-threaded-cf"], default-features = false}
+rand = "0.8.5"
+speedb = { version = "0.0.4", features = ["jemalloc"], default_features = false }
