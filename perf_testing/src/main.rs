@@ -17,7 +17,10 @@ use std::{
 
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
-use speedb::{BlockBasedOptions, Cache, CuckooTableOptions, DBCompactionStyle, Options, WriteOptions};
+use speedb::{
+    BlockBasedOptions, Cache, ColumnFamily, ColumnFamilyDescriptor, CuckooTableOptions, DBCompactionStyle, Options,
+    WriteOptions, BoundColumnFamily,
+};
 
 use crate::{
     key::{Key, Keys, KEY_SIZE},
@@ -107,6 +110,7 @@ fn main() {
         options.enable_statistics();
         options.set_max_background_jobs(4);
         options.set_max_subcompactions(4);
+        options.create_missing_column_families(true);
         // options.set_disable_auto_compactions(true);
         options
     };
@@ -126,7 +130,7 @@ fn main() {
     // move || read_prefix_iter(reader, stop)
     // });
 
-    test_direct(storage_dir, &options, 1);
+    test_direct(storage_dir, &options, 4);
     // test_memtables(storage_dir, &options);
 
     // print!("{}", options.get_statistics().unwrap());
@@ -144,9 +148,15 @@ fn test_direct(storage_dir: &Path, options: &Options, num_threads: usize) {
 
     let start = Instant::now();
     thread::scope(|s| {
-        for _ in 0..num_threads {
-            s.spawn(|| {
-                write_direct_to_storage(&storage, SST_SIZE_TARGET * SST_COUNT / KEY_SIZE / num_threads, SST_SIZE_TARGET / KEY_SIZE / num_threads)
+        let storage = &storage;
+        for i in 0..num_threads {
+            s.spawn(move || {
+                write_direct_to_storage(
+                    storage,
+                    storage.db.cf_handle(&format!("cf{i}")).unwrap(),
+                    SST_SIZE_TARGET * SST_COUNT / KEY_SIZE / num_threads,
+                    SST_SIZE_TARGET / KEY_SIZE / num_threads,
+                )
             });
         }
     });
@@ -204,7 +214,7 @@ fn fill_memtable(memtable: &mut Memtable) -> (Measurement, Vec<Key>) {
 }
 
 #[allow(dead_code)]
-fn write_direct_to_storage(storage: &Storage, key_count: usize, batch_size: usize) {
+fn write_direct_to_storage(storage: &Storage, cf: Arc<BoundColumnFamily>, key_count: usize, batch_size: usize) {
     for (iteration, _) in (0..key_count).step_by(batch_size).enumerate() {
         println!("---Iteration {iteration} ---");
         let mut rng = thread_rng();
@@ -215,7 +225,7 @@ fn write_direct_to_storage(storage: &Storage, key_count: usize, batch_size: usiz
         };
         let start = Instant::now();
         for keys in generated.chunks(128) {
-            storage.put(keys);
+            storage.put(keys, &cf);
         }
         let storage_write_measurement =
             Measurement::new(batch_size, KEY_SIZE, (batch_size * KEY_SIZE) as u64, start.elapsed());

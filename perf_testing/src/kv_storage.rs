@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc, time::Instant};
 
 use speedb::{
-    Direction::Forward, Error, IteratorMode, IteratorMode::From, Options, SstFileWriter, WriteBatch, WriteOptions, DB,
+    Direction::Forward, Error, IteratorMode, IteratorMode::From, Options, SstFileWriter, WriteBatch, WriteOptions, DB, ColumnFamily, BoundColumnFamily,
 };
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 };
 
 pub(crate) struct Storage<'a> {
-    db: Arc<DB>,
+    pub db: Arc<DB>,
     sst_writer: SstFileWriter<'a>,
     sst_counter: usize,
     write_options: WriteOptions,
@@ -21,7 +21,7 @@ impl<'a> Storage<'a> {
     const EMPTY_VALUE: [u8; 0] = [];
 
     pub(crate) fn new(path: &Path, options: &'a Options) -> Storage<'a> {
-        let db = Arc::new(DB::open(options, path).unwrap());
+        let db = Arc::new(DB::open_cf(options, path, ["cf1", "cf2", "cf3", "cf0"]).unwrap());
         let sst_writer = SstFileWriter::create(options);
         let mut write_options = WriteOptions::default();
         write_options.disable_wal(true);
@@ -58,9 +58,9 @@ impl<'a> Storage<'a> {
         self.db.iterator(IteratorMode::Start).count()
     }
 
-    pub(crate) fn put(&self, keys: &[Key]) {
+    pub(crate) fn put(&self, keys: &[Key], cf: &Arc<BoundColumnFamily>) {
         let mut write_batch = WriteBatch::default();
-        keys.iter().for_each(|key| write_batch.put(key.key, Storage::EMPTY_VALUE));
+        keys.iter().for_each(|key| write_batch.put_cf(cf, key.key, Storage::EMPTY_VALUE));
         self.db.write_opt(write_batch, &self.write_options).unwrap();
     }
 }
