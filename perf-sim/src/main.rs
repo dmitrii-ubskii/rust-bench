@@ -1,7 +1,6 @@
 mod concept;
 
 use std::{
-    mem::{size_of, transmute},
     path::Path,
     str::FromStr,
     sync::atomic::{AtomicBool, Ordering},
@@ -11,8 +10,7 @@ use std::{
 
 use clap::{arg, command, value_parser, ArgAction};
 use concept::{
-    Attribute, AttributeType, EdgeType, HasBackwardEdge, HasForwardEdge, Prefix, RelatesBackwardEdge,
-    RelatesForwardEdge, Thing, ThingID, Type, TypeID, ValueType,
+    Attribute, AttributeType, EdgeType, HasEdge, Prefix, RelatesEdge, Thing, ThingID, Type, TypeID, ValueType,
 };
 use itertools::Itertools;
 use rand::{seq::SliceRandom, thread_rng, Rng};
@@ -148,33 +146,21 @@ fn agent(db: &DB, stop: &AtomicBool, batch_reads: bool, supernodes: &Vec<Attribu
 fn make_supernode_friendships(db: &DB, person: Thing, supernodes: &Vec<Attribute>) {
     let name = supernodes.choose(&mut thread_rng()).unwrap();
     let prefix = [name.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
-    let edge: Option<Result<Result<HasBackwardEdge, _>, _>> = db
-        .iterator(IteratorMode::From(&prefix, Direction::Forward))
-        .next()
-        .map(|e| e.map(|e| <[u8; size_of::<HasBackwardEdge>()]>::try_from(&*e.0).map(|v| unsafe { transmute(v) })));
-    if let Some(Ok(Ok(HasBackwardEdge { owner, .. }))) = edge {
+    let edge: Option<Result<Result<HasEdge, _>, _>> =
+        db.iterator(IteratorMode::From(&prefix, Direction::Forward)).next().map(|e| {
+            e.map(|e| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*e.0).map(HasEdge::from_bytes_backward))
+        });
+    if let Some(Ok(Ok(HasEdge { owner, .. }))) = edge {
         let rel = Thing { type_: FRIENDSHIP, thing_id: ThingID { id: thread_rng().gen() } };
         db.put(rel.as_bytes(), []).unwrap();
-        db.put(
-            RelatesForwardEdge { rel, edge_type: EdgeType::Relates, role_type: FRIEND, player: owner }.as_bytes(),
-            [],
-        )
-        .unwrap();
-        db.put(
-            RelatesBackwardEdge { rel, edge_type: EdgeType::Relates, role_type: FRIEND, player: owner }.as_bytes(),
-            [],
-        )
-        .unwrap();
-        db.put(
-            RelatesForwardEdge { rel, edge_type: EdgeType::Relates, role_type: FRIEND, player: person }.as_bytes(),
-            [],
-        )
-        .unwrap();
-        db.put(
-            RelatesBackwardEdge { rel, edge_type: EdgeType::Relates, role_type: FRIEND, player: person }.as_bytes(),
-            [],
-        )
-        .unwrap();
+
+        let relates_edge = RelatesEdge { rel, role_type: FRIEND, player: owner };
+        db.put(relates_edge.to_forward_bytes(), []).unwrap();
+        db.put(relates_edge.to_backward_bytes(), []).unwrap();
+
+        let relates_edge = RelatesEdge { rel, role_type: FRIEND, player: person };
+        db.put(relates_edge.to_forward_bytes(), []).unwrap();
+        db.put(relates_edge.to_backward_bytes(), []).unwrap();
     }
 }
 
@@ -184,8 +170,9 @@ fn register_person(db: &DB, name: Attribute) -> Thing {
     let person = Thing { type_: PERSON, thing_id: ThingID { id: thread_rng().gen() } };
     db.put(person.as_bytes(), []).unwrap();
 
-    db.put(HasForwardEdge { owner: person, edge_type: EdgeType::Has, attr: name }.as_bytes(), []).unwrap();
-    db.put(HasBackwardEdge { owner: person, edge_type: EdgeType::Has, attr: name }.as_bytes(), []).unwrap();
+    let has_edge = HasEdge { owner: person, attr: name };
+    db.put(has_edge.to_forward_bytes(), []).unwrap();
+    db.put(has_edge.to_backward_bytes(), []).unwrap();
 
     person
 }

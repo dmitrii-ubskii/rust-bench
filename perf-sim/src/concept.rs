@@ -67,12 +67,40 @@ impl Attribute {
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum EdgeType {
-    Has, Relates,
+    Has,
+    Relates,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct HasEdge {
+    pub owner: Thing,
+    pub attr: Attribute,
+}
+
+impl HasEdge {
+    pub fn to_forward_bytes(self) -> [u8; size_of::<HasForwardEdge>()] {
+        let Self { owner, attr } = self;
+        HasForwardEdge { owner, attr, edge_type: EdgeType::Has }.to_bytes()
+    }
+
+    pub fn to_backward_bytes(self) -> [u8; size_of::<HasBackwardEdge>()] {
+        let Self { owner, attr } = self;
+        HasForwardEdge { owner, attr, edge_type: EdgeType::Has }.to_bytes()
+    }
+
+    pub const fn backward_encoding_size() -> usize {
+        size_of::<HasBackwardEdge>()
+    }
+
+    pub fn from_bytes_backward(bytes: [u8; size_of::<HasBackwardEdge>()]) -> Self {
+        let HasBackwardEdge { attr, edge_type: _, owner } = unsafe { transmute(bytes)};
+        Self { owner, attr }
+    }
 }
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct HasForwardEdge {
+struct HasForwardEdge {
     pub owner: Thing,
     pub edge_type: EdgeType,
     pub attr: Attribute,
@@ -80,15 +108,34 @@ pub struct HasForwardEdge {
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct HasBackwardEdge {
+struct HasBackwardEdge {
     pub attr: Attribute,
     pub edge_type: EdgeType,
     pub owner: Thing,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RelatesEdge {
+    pub rel: Thing,
+    pub role_type: Type,
+    pub player: Thing,
+}
+
+impl RelatesEdge {
+    pub fn to_forward_bytes(self) -> [u8; size_of::<RelatesForwardEdge>()] {
+        let Self { rel, role_type, player } = self;
+        RelatesForwardEdge { rel, role_type, player, edge_type: EdgeType::Relates }.to_bytes()
+    }
+
+    pub fn to_backward_bytes(self) -> [u8; size_of::<RelatesBackwardEdge>()] {
+        let Self { rel, role_type, player } = self;
+        RelatesForwardEdge { rel, role_type, player, edge_type: EdgeType::Relates }.to_bytes()
+    }
+}
+
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct RelatesForwardEdge {
+struct RelatesForwardEdge {
     pub rel: Thing,
     pub edge_type: EdgeType,
     pub role_type: Type,
@@ -97,7 +144,7 @@ pub struct RelatesForwardEdge {
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
-pub struct RelatesBackwardEdge {
+struct RelatesBackwardEdge {
     pub player: Thing,
     pub edge_type: EdgeType,
     pub role_type: Type,
@@ -108,6 +155,9 @@ macro_rules! bytes {
     ($($t:ty)*) => {$(
         impl $t {
             pub fn as_bytes(&self) -> &[u8; size_of::<Self>()] {
+                unsafe { transmute(self) }
+            }
+            pub fn to_bytes(self) -> [u8; size_of::<Self>()] {
                 unsafe { transmute(self) }
             }
         }
