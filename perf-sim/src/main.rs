@@ -139,22 +139,16 @@ fn agent(db: &DB, stop: &AtomicBool, batch_reads: bool, supernodes: &Vec<Attribu
             make_supernode_friendships(db, person, supernodes);
             // make_random_friendships(db, person, supernodes);
         }
-        break;
     }
 }
 
 fn make_supernode_friendships(db: &DB, person: Thing, supernodes: &Vec<Attribute>) {
     let name = supernodes.choose(&mut thread_rng()).unwrap();
-    let prefix = [name.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
-    let edge: Option<Result<Result<HasEdge, _>, _>> =
-        db.iterator(IteratorMode::From(&prefix, Direction::Forward)).next().map(|e| {
-            e.map(|e| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*e.0).map(HasEdge::from_bytes_backward))
-        });
-    if let Some(Ok(Ok(HasEdge { owner, .. }))) = edge {
+    if let Some(popular) = get_one_owner(name, db) {
         let rel = Thing { type_: FRIENDSHIP, thing_id: ThingID { id: thread_rng().gen() } };
         db.put(rel.as_bytes(), []).unwrap();
 
-        let relates_edge = RelatesEdge { rel, role_type: FRIEND, player: owner };
+        let relates_edge = RelatesEdge { rel, role_type: FRIEND, player: popular };
         db.put(relates_edge.to_forward_bytes(), []).unwrap();
         db.put(relates_edge.to_backward_bytes(), []).unwrap();
 
@@ -162,6 +156,16 @@ fn make_supernode_friendships(db: &DB, person: Thing, supernodes: &Vec<Attribute
         db.put(relates_edge.to_forward_bytes(), []).unwrap();
         db.put(relates_edge.to_backward_bytes(), []).unwrap();
     }
+}
+
+fn get_one_owner(name: &Attribute, db: &DB) -> Option<Thing> {
+    let prefix = [name.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
+    db.iterator(IteratorMode::From(&prefix, Direction::Forward))
+        .next()
+        .and_then(Result::ok)
+        .and_then(|(k, _)| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*k).ok())
+        .map(HasEdge::from_bytes_backward)
+        .map(|HasEdge {owner, ..}| owner)
 }
 
 fn register_person(db: &DB, name: Attribute) -> Thing {
