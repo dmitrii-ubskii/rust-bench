@@ -1,4 +1,4 @@
-use std::collections::{btree_set::Iter, BTreeSet};
+use std::collections::BTreeSet;
 
 use crate::key::{Key, KEY_SIZE};
 
@@ -24,8 +24,24 @@ impl Memtable {
     pub(crate) fn len(&self) -> usize {
         self.data.len()
     }
+}
 
-    pub(crate) fn iter(&self) -> Iter<'_, Key> {
+impl IntoIterator for Memtable {
+    type Item = Key;
+
+    type IntoIter = <BTreeSet<Key> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.data.into_iter()
+    }
+}
+
+impl<'a> IntoIterator for &'a Memtable {
+    type Item = &'a Key;
+
+    type IntoIter = <&'a BTreeSet<Key> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> Self::IntoIter {
         self.data.iter()
     }
 }

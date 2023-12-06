@@ -24,7 +24,7 @@ impl Display for Measurement {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "MB/sec: {:.3}, key count: {}, key size: {}, bytes written: {}, time: {:?}",
+            "MB/sec: {:.3}, key count: {}, key size: {}, bytes written: {}, time: {:.2?}",
             self.throughput() / 1_000_000.0,
             self.key_count,
             self.key_size,
