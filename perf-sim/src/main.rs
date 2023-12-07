@@ -84,7 +84,7 @@ fn main() {
     .map(|value| Attribute { type_: NAME, value })
     .collect_vec();
 
-    let mut writer = WriteHandle::default();
+    let mut writer = storage.writer();
     supernodes.iter().unique().for_each(|name| {
         register_person(&mut writer, *name);
     });
@@ -115,7 +115,7 @@ const NAME: AttributeType =
 
 fn agent(storage: &Storage, stop: &AtomicBool, batch_reads: bool, supernodes: &Vec<Attribute>) {
     while !stop.load(Ordering::Relaxed) {
-        let mut writer = WriteHandle::default();
+        let mut writer = storage.writer();
 
         if batch_reads {
             todo!()
