@@ -85,7 +85,7 @@ impl HasEdge {
 
     pub fn to_backward_bytes(self) -> [u8; size_of::<HasBackwardEdge>()] {
         let Self { owner, attr } = self;
-        HasForwardEdge { owner, attr, edge_type: EdgeType::Has }.to_bytes()
+        HasBackwardEdge { owner, attr, edge_type: EdgeType::Has }.to_bytes()
     }
 
     pub const fn backward_encoding_size() -> usize {
@@ -176,6 +176,14 @@ impl RelationSiblingEdge {
             rhs_player: lhs_player,
         }
         .to_bytes()
+    }
+
+    pub const fn encoding_size() -> usize {
+        size_of::<Self>()
+    }
+
+    pub fn from_bytes(bytes: [u8; size_of::<Self>()]) -> Self {
+        unsafe { transmute(bytes) }
     }
 }
 

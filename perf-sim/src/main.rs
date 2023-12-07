@@ -123,10 +123,9 @@ fn agent(storage: &Storage, stop: &AtomicBool, batch_reads: bool, supernodes: &V
             let name = Attribute { type_: NAME, value: thread_rng().gen() };
             let person = register_person(&mut writer, name);
             make_supernode_friendships(storage, &mut writer, person, supernodes);
-            // make_random_friendships(db, &mut write_batch, person, supernodes);
+            make_random_friendships(storage, &mut writer, person, supernodes);
         }
 
-        // db.write_without_wal(write_batch).unwrap();
         storage.commit(writer);
     }
 }
@@ -136,6 +135,18 @@ fn make_supernode_friendships(storage: &Storage, writer: &mut WriteHandle, perso
     if let Some(popular) = storage.get_one_owner(name) {
         let rel = Thing { type_: FRIENDSHIP, thing_id: ThingID { id: thread_rng().gen() } };
         writer.put_relation(rel, [(FRIEND, popular), (FRIEND, person)]);
+    }
+}
+
+fn make_random_friendships(storage: &Storage, writer: &mut WriteHandle, person: Thing, supernodes: &Vec<Attribute>) {
+    for _ in 0..5 {
+        let name = supernodes.choose(&mut thread_rng()).unwrap();
+        if let Some(popular) = storage.get_one_owner(name) {
+            if let Some(rando) = storage.get_random_sibling(popular, FRIEND, FRIENDSHIP) {
+                let rel = Thing { type_: FRIENDSHIP, thing_id: ThingID { id: thread_rng().gen() } };
+                writer.put_relation(rel, [(FRIEND, rando), (FRIEND, person)]);
+            }
+        }
     }
 }
 

@@ -1,10 +1,11 @@
 use std::path::Path;
 
 use itertools::Itertools;
+use rand::{thread_rng, Rng};
 use speedb::{IteratorMode, Options, WriteBatch, DB};
 
 use crate::{
-    concept::{Attribute, EdgeType, HasEdge, RelatesEdge, RelationSiblingEdge, Thing, Type},
+    concept::{Attribute, EdgeType, HasEdge, RelatesEdge, RelationSiblingEdge, Thing, ThingID, Type},
     Mode,
 };
 
@@ -45,6 +46,18 @@ impl Storage {
             .and_then(|(k, _)| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*k).ok())
             .map(HasEdge::from_bytes_backward)
             .map(|HasEdge { owner, .. }| owner)
+    }
+
+    pub fn get_random_sibling(&self, start: Thing, role_type: Type, relation_type: Type) -> Option<Thing> {
+        let random_relation = Thing { type_: relation_type, thing_id: ThingID { id: 0 } };
+        let prefix = [start.as_bytes() as &[u8], role_type.as_bytes(), random_relation.as_bytes()].concat();
+        self.db
+            .prefix_iterator(&prefix)
+            .next()
+            .and_then(Result::ok)
+            .and_then(|(k, _)| <[u8; RelationSiblingEdge::encoding_size()]>::try_from(&*k).ok())
+            .map(RelationSiblingEdge::from_bytes)
+            .map(|RelationSiblingEdge { rhs_player, .. }| rhs_player)
     }
 
     pub fn commit(&self, write_handle: WriteHandle) {
