@@ -80,20 +80,17 @@ fn main() {
     });
 
     thread::scope(|s| {
-        let threads = (0..num_threads)
-            .map(|_| {
-                s.spawn({
-                    let stop = &stop;
-                    let supernodes = &supernodes;
-                    let db = &db;
-                    move || agent(db, stop, batch_reads, supernodes)
-                })
-            })
-            .collect_vec();
+        for _ in 0..num_threads {
+            s.spawn({
+                let stop = &stop;
+                let supernodes = &supernodes;
+                let db = &db;
+                move || agent(db, stop, batch_reads, supernodes)
+            });
+        }
 
         thread::sleep(Duration::from_secs(5));
         stop.store(true, Ordering::Release);
-        threads.into_iter().for_each(|t| t.join().expect("Error joining writer thread"));
     });
 
     dbg!(db.iterator(IteratorMode::Start).count());
@@ -165,7 +162,7 @@ fn get_one_owner(name: &Attribute, db: &DB) -> Option<Thing> {
         .and_then(Result::ok)
         .and_then(|(k, _)| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*k).ok())
         .map(HasEdge::from_bytes_backward)
-        .map(|HasEdge {owner, ..}| owner)
+        .map(|HasEdge { owner, .. }| owner)
 }
 
 fn register_person(db: &DB, name: Attribute) -> Thing {
