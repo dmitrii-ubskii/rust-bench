@@ -10,10 +10,13 @@ use std::{
 };
 
 use clap::{arg, command, value_parser, ArgAction};
-use concept::{Attribute, AttributeType, Prefix, Thing, ThingID, Type, TypeID, ValueType};
 use itertools::Itertools;
 use rand::{seq::SliceRandom, thread_rng, Rng};
-use storage::{Storage, WriteHandle};
+
+use self::{
+    concept::{Attribute, AttributeType, Prefix, Thing, ThingID, Type, TypeID, ValueType},
+    storage::{Storage, WriteHandle},
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Mode {
