@@ -83,6 +83,15 @@ impl HasEdge {
         HasForwardEdge { owner, attr, edge_type: EdgeType::Has }.to_bytes()
     }
 
+    pub const fn forward_encoding_size() -> usize {
+        size_of::<HasForwardEdge>()
+    }
+
+    pub fn from_bytes_forward(bytes: [u8; size_of::<HasForwardEdge>()]) -> Self {
+        let HasForwardEdge { attr, edge_type: _, owner } = unsafe { transmute(bytes) };
+        Self { owner, attr }
+    }
+
     pub fn to_backward_bytes(self) -> [u8; size_of::<HasBackwardEdge>()] {
         let Self { owner, attr } = self;
         HasBackwardEdge { owner, attr, edge_type: EdgeType::Has }.to_bytes()
