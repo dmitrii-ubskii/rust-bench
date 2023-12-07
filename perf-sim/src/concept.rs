@@ -93,7 +93,7 @@ impl HasEdge {
     }
 
     pub fn from_bytes_backward(bytes: [u8; size_of::<HasBackwardEdge>()]) -> Self {
-        let HasBackwardEdge { attr, edge_type: _, owner } = unsafe { transmute(bytes)};
+        let HasBackwardEdge { attr, edge_type: _, owner } = unsafe { transmute(bytes) };
         Self { owner, attr }
     }
 }
@@ -151,6 +151,34 @@ struct RelatesBackwardEdge {
     pub rel: Thing,
 }
 
+#[repr(C, packed)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct RelationSiblingEdge {
+    pub lhs_player: Thing,
+    pub lhs_role_type: Type,
+    pub rel: Thing,
+    pub rhs_role_type: Type,
+    pub rhs_player: Thing,
+}
+
+impl RelationSiblingEdge {
+    pub fn to_forward_bytes(self) -> [u8; size_of::<Self>()] {
+        self.to_bytes()
+    }
+
+    pub fn to_backward_bytes(self) -> [u8; size_of::<Self>()] {
+        let Self { lhs_player, lhs_role_type, rel, rhs_role_type, rhs_player } = self;
+        Self {
+            lhs_player: rhs_player,
+            lhs_role_type: rhs_role_type,
+            rel,
+            rhs_role_type: lhs_role_type,
+            rhs_player: lhs_player,
+        }
+        .to_bytes()
+    }
+}
+
 macro_rules! bytes {
     ($($t:ty)*) => {$(
         impl $t {
@@ -173,4 +201,6 @@ bytes! {
 
     RelatesForwardEdge
     RelatesBackwardEdge
+
+    RelationSiblingEdge
 }
