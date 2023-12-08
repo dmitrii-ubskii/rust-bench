@@ -102,6 +102,7 @@ fn main() {
     });
 
     storage.print_stats();
+
     println!("Olaf's friends:");
     let olaf = storage.get_one_owner(&Attribute { type_: agent::NAME, value: 0x01AF }).unwrap();
     for sib in storage.iter_siblings(olaf, agent::FRIEND, agent::FRIENDSHIP) {

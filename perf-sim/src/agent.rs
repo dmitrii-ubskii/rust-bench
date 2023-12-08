@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use rand::{thread_rng, Rng, seq::SliceRandom};
+use rand::{seq::SliceRandom, thread_rng, Rng};
 
 use crate::{
     concept::{Attribute, AttributeType, Prefix, Thing, ThingID, Type, TypeID, ValueType},
@@ -8,11 +8,8 @@ use crate::{
 };
 
 pub const PERSON: Type = Type { prefix: Prefix::Entity, id: TypeID { id: 0 } };
-
 pub const FRIENDSHIP: Type = Type { prefix: Prefix::Relation, id: TypeID { id: 0 } };
-
 pub const FRIEND: Type = Type { prefix: Prefix::Role, id: TypeID { id: 0 } };
-
 pub const NAME: AttributeType =
     AttributeType { prefix: Prefix::Attribute, id: TypeID { id: 0 }, value_type: ValueType::Long };
 
@@ -71,4 +68,3 @@ pub fn register_person(writer: &mut WriteHandle, name: Attribute) -> Thing {
     writer.put_ownership(person, name);
     person
 }
-
