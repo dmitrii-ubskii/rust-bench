@@ -10,3 +10,6 @@ clap = { version = "4.4.11", features = ["cargo"] }
 itertools = "0.12.0"
 rand = "0.8.5"
 speedb = { version = "0.0.4", features = ["jemalloc"], default_features = false }
+
+[profile.dev]
+opt-level = 1
