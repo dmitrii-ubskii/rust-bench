@@ -110,17 +110,17 @@ impl HasEdge {
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct HasForwardEdge {
-    pub owner: Thing,
-    pub edge_type: EdgeType,
-    pub attr: Attribute,
+    owner: Thing,
+    edge_type: EdgeType,
+    attr: Attribute,
 }
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct HasBackwardEdge {
-    pub attr: Attribute,
-    pub edge_type: EdgeType,
-    pub owner: Thing,
+    attr: Attribute,
+    edge_type: EdgeType,
+    owner: Thing,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -145,19 +145,19 @@ impl RelatesEdge {
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct RelatesForwardEdge {
-    pub rel: Thing,
-    pub edge_type: EdgeType,
-    pub role_type: Type,
-    pub player: Thing,
+    rel: Thing,
+    edge_type: EdgeType,
+    role_type: Type,
+    player: Thing,
 }
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 struct RelatesBackwardEdge {
-    pub player: Thing,
-    pub edge_type: EdgeType,
-    pub role_type: Type,
-    pub rel: Thing,
+    player: Thing,
+    edge_type: EdgeType,
+    role_type: Type,
+    rel: Thing,
 }
 
 #[repr(C, packed)]
