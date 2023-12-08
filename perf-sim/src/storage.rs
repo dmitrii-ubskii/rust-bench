@@ -83,7 +83,7 @@ impl Storage {
     pub fn get_one_has(&self, owner: Thing) -> Option<Attribute> {
         let prefix = [owner.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
         match self {
-            Self::Single { db, .. } => db.prefix_iterator(&prefix),
+            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
             Self::MultipleColumnFamilies { db, has_forward_cf, .. } => db.prefix_iterator_cf(has_forward_cf, &prefix),
         }
         .next()
@@ -96,7 +96,7 @@ impl Storage {
     pub fn get_one_owner(&self, attribute: &Attribute) -> Option<Thing> {
         let prefix = [attribute.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
         match self {
-            Self::Single { db, .. } => db.prefix_iterator(&prefix),
+            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
             Self::MultipleColumnFamilies { db, has_backward_cf, .. } => db.prefix_iterator_cf(has_backward_cf, &prefix),
         }
         .next()
@@ -114,7 +114,7 @@ impl Storage {
     ) -> impl Iterator<Item = Thing> + '_ {
         let prefix = [start.as_bytes() as &[u8], role_type.as_bytes(), relation_type.as_bytes()].concat();
         match self {
-            Self::Single { db, .. } => db.prefix_iterator(&prefix),
+            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
             Self::MultipleColumnFamilies { db, relation_sibling_cf, .. } => {
                 db.prefix_iterator_cf(relation_sibling_cf, &prefix)
             }
@@ -129,7 +129,7 @@ impl Storage {
         let random_relation = Thing { type_: relation_type, thing_id: ThingID { id: thread_rng().gen() } };
         let prefix = [start.as_bytes() as &[u8], role_type.as_bytes(), random_relation.as_bytes()].concat();
         match self {
-            Self::Single { db, .. } => db.prefix_iterator(&prefix),
+            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
             Self::MultipleColumnFamilies { db, relation_sibling_cf, .. } => {
                 db.prefix_iterator_cf(relation_sibling_cf, &prefix)
             }
@@ -152,7 +152,7 @@ impl Storage {
     pub fn print_stats(&self) {
         print!("Total keys in DB: ");
         match self {
-            Self::Single { db, .. } => println!("{}", db.iterator(IteratorMode::Start).count()),
+            Self::Single { db, cf } => println!("{}", db.iterator_cf(cf, IteratorMode::Start).count()),
             Storage::MultipleColumnFamilies { db, .. } => {
                 println!(
                     "{}",

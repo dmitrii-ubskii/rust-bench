@@ -1,3 +1,4 @@
+mod agent;
 mod concept;
 mod storage;
 
@@ -11,12 +12,8 @@ use std::{
 
 use clap::{arg, command, value_parser, ArgAction};
 use itertools::Itertools;
-use rand::{seq::SliceRandom, thread_rng, Rng};
 
-use self::{
-    concept::{Attribute, AttributeType, Prefix, Thing, ThingID, Type, TypeID, ValueType},
-    storage::{Storage, WriteHandle},
-};
+use self::{concept::Attribute, storage::Storage};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum Mode {
@@ -81,12 +78,12 @@ fn main() {
         0xB01DFACE,
     ]
     .into_iter()
-    .map(|value| Attribute { type_: NAME, value })
+    .map(|value| Attribute { type_: agent::NAME, value })
     .collect_vec();
 
     let mut writer = storage.writer();
     supernodes.iter().unique().for_each(|name| {
-        register_person(&mut writer, *name);
+        agent::register_person(&mut writer, *name);
     });
     storage.commit(writer);
 
@@ -96,65 +93,20 @@ fn main() {
                 let stop = &stop;
                 let supernodes = &supernodes;
                 let storage = &storage;
-                move || agent(storage, stop, batch_reads, supernodes)
+                move || agent::agent(storage, stop, batch_reads, supernodes)
             });
         }
 
-        thread::sleep(Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(1));
         stop.store(true, Ordering::Release);
     });
 
     storage.print_stats();
-}
-
-const PERSON: Type = Type { prefix: Prefix::Entity, id: TypeID { id: 0 } };
-const FRIENDSHIP: Type = Type { prefix: Prefix::Relation, id: TypeID { id: 0 } };
-const FRIEND: Type = Type { prefix: Prefix::Role, id: TypeID { id: 0 } };
-const NAME: AttributeType =
-    AttributeType { prefix: Prefix::Attribute, id: TypeID { id: 0 }, value_type: ValueType::Long };
-
-fn agent(storage: &Storage, stop: &AtomicBool, batch_reads: bool, supernodes: &Vec<Attribute>) {
-    while !stop.load(Ordering::Relaxed) {
-        let mut writer = storage.writer();
-
-        if batch_reads {
-            todo!()
-        } else {
-            let name = Attribute { type_: NAME, value: thread_rng().gen() };
-            let person = register_person(&mut writer, name);
-            make_supernode_friendships(storage, &mut writer, person, supernodes);
-            make_random_friendships(storage, &mut writer, person, supernodes);
-        }
-
-        storage.commit(writer);
+    println!("Olaf's friends:");
+    let olaf = storage.get_one_owner(&Attribute { type_: agent::NAME, value: 0x01AF }).unwrap();
+    for sib in storage.iter_siblings(olaf, agent::FRIEND, agent::FRIENDSHIP) {
+        let Some(Attribute { value, .. }) = storage.get_one_has(sib) else { panic!() };
+        print!("{:x} ", value);
     }
-}
-
-fn make_supernode_friendships(storage: &Storage, writer: &mut WriteHandle, person: Thing, supernodes: &Vec<Attribute>) {
-    let name = supernodes.choose(&mut thread_rng()).unwrap();
-    if let Some(popular) = storage.get_one_owner(name) {
-        let rel = Thing { type_: FRIENDSHIP, thing_id: ThingID { id: thread_rng().gen() } };
-        writer.put_relation(rel, [(FRIEND, popular), (FRIEND, person)]);
-    }
-}
-
-fn make_random_friendships(storage: &Storage, writer: &mut WriteHandle, person: Thing, supernodes: &Vec<Attribute>) {
-    for _ in 0..5 {
-        let name = supernodes.choose(&mut thread_rng()).unwrap();
-        if let Some(popular) = storage.get_one_owner(name) {
-            if let Some(rando) = storage.get_random_sibling(popular, FRIEND, FRIENDSHIP) {
-                let rel = Thing { type_: FRIENDSHIP, thing_id: ThingID { id: thread_rng().gen() } };
-                writer.put_relation(rel, [(FRIEND, rando), (FRIEND, person)]);
-            }
-        }
-    }
-}
-
-fn register_person(writer: &mut WriteHandle, name: Attribute) -> Thing {
-    writer.put_attribute(name);
-    // assume collisions unlikely
-    let person = Thing { type_: PERSON, thing_id: ThingID { id: thread_rng().gen() } };
-    writer.put_entity(person);
-    writer.put_ownership(person, name);
-    person
+    println!();
 }

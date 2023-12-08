@@ -6,6 +6,7 @@ mod measurement;
 mod memtable;
 
 use std::{
+    collections::HashMap,
     path::Path,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -18,8 +19,8 @@ use std::{
 use itertools::Itertools;
 use rand::{thread_rng, Rng};
 use speedb::{
-    BlockBasedOptions, Cache, ColumnFamily, ColumnFamilyDescriptor, CuckooTableOptions, DBCompactionStyle, Options,
-    WriteOptions, BoundColumnFamily,
+    BlockBasedOptions, BoundColumnFamily, Cache, ColumnFamily, ColumnFamilyDescriptor, CuckooTableOptions,
+    DBCompactionStyle, Options, WriteOptions,
 };
 
 use crate::{
@@ -146,18 +147,23 @@ fn test_direct(storage_dir: &Path, options: &Options, num_threads: usize, cfs: [
         std::fs::remove_dir_all(storage_dir).expect("could not remove data dir");
     }
 
-    let storage = Storage::new(storage_dir, options);
+    let dbs = cfs
+        .iter()
+        .unique()
+        .map(|&cf| (cf, Storage::new(&storage_dir.join(format!("db{cf}")), options)))
+        .collect::<HashMap<_, _>>();
 
     let start = Instant::now();
     thread::scope(|s| {
-        let storage = &storage;
+        let dbs = &dbs;
         dbg!(num_threads);
         for i in 0..num_threads {
             s.spawn(move || {
-                let cf_name = cfs[i];
+                let cf = cfs[i];
+                let storage = &dbs[cf];
                 write_direct_to_storage(
                     storage,
-                    storage.db.cf_handle(dbg!(cf_name)).unwrap(),
+                    storage.db.cf_handle(dbg!(cf)).unwrap(),
                     SST_SIZE_TARGET * SST_COUNT / KEY_SIZE / num_threads,
                     SST_SIZE_TARGET / KEY_SIZE / num_threads,
                 )
@@ -167,7 +173,7 @@ fn test_direct(storage_dir: &Path, options: &Options, num_threads: usize, cfs: [
     println!("Total time: {:.2?}", start.elapsed());
 
     let start = Instant::now();
-    let count = storage.total_keys();
+    let count: usize = dbs.values().map(Storage::total_keys).sum();
     println!("Total keys in db: {}, in time: {:.2?}", count, start.elapsed());
 }
 
