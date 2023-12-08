@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::mem::{size_of, transmute};
 
 #[repr(u8)]
@@ -220,6 +218,7 @@ struct RelationSiblingEdgeEncoded {
 
 macro_rules! bytes {
     ($($t:ty)*) => {$(
+        #[allow(dead_code)]
         impl $t {
             pub fn as_bytes(&self) -> &[u8; size_of::<Self>()] {
                 unsafe { transmute(self) }

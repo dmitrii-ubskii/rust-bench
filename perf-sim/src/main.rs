@@ -54,16 +54,18 @@ fn main() {
                 .value_parser(value_parser!(PathBuf))
                 .default_value("testing-store"),
         )
+        .arg(
+            arg!(-s --seconds <SECONDS> "how long to run the benchmark for")
+                .value_parser(value_parser!(u64))
+                .default_value("1"),
+        )
         .get_matches();
 
-    let Some(&mode) = args.get_one("mode") else { panic!("could not get value of --mode") };
+    let mode = get_arg(&args, "mode");
+    let storage_dir = get_arg::<PathBuf>(&args, "dir");
+    let storage = Storage::new(&storage_dir, mode);
 
-    let Some(storage_dir) = args.get_one::<PathBuf>("dir") else { panic!("could not get value of --dir") };
-    let storage = Storage::new(storage_dir, mode);
-
-    let stop = AtomicBool::new(false);
-
-    let Some(&num_threads) = args.get_one::<usize>("threads") else { panic!("could not get value of --threads") };
+    let num_threads = get_arg::<usize>(&args, "threads");
     let batch_reads = args.get_one("batch-reads").copied().unwrap_or(false);
 
     #[rustfmt::skip]
@@ -87,6 +89,8 @@ fn main() {
     });
     storage.commit(writer);
 
+    let stop = AtomicBool::new(false);
+
     thread::scope(|s| {
         for _ in 0..num_threads {
             s.spawn({
@@ -97,17 +101,13 @@ fn main() {
             });
         }
 
-        thread::sleep(Duration::from_secs(1));
+        thread::sleep(Duration::from_secs(get_arg(&args, "seconds")));
         stop.store(true, Ordering::Release);
     });
 
     storage.print_stats();
+}
 
-    println!("Olaf's friends:");
-    let olaf = storage.get_one_owner(&Attribute { type_: agent::NAME, value: 0x01AF }).unwrap();
-    for sib in storage.iter_siblings(olaf, agent::FRIEND, agent::FRIENDSHIP) {
-        let Some(Attribute { value, .. }) = storage.get_one_has(sib) else { panic!() };
-        print!("{:x} ", value);
-    }
-    println!();
+fn get_arg<T: Clone + Send + Sync + 'static>(args: &clap::ArgMatches, key: &str) -> T {
+    args.get_one::<T>(key).cloned().expect("could not get value of --{key}")
 }
