@@ -138,7 +138,7 @@ impl RelatesEdge {
 
     pub fn to_backward_bytes(self) -> [u8; size_of::<RelatesBackwardEdge>()] {
         let Self { rel, role_type, player } = self;
-        RelatesForwardEdge { rel, role_type, player, edge_type: EdgeType::Relates }.to_bytes()
+        RelatesBackwardEdge { rel, role_type, player, edge_type: EdgeType::Relates }.to_bytes()
     }
 }
 

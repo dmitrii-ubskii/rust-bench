@@ -83,9 +83,10 @@ impl Storage {
     pub fn get_one_has(&self, owner: Thing) -> Option<Attribute> {
         let prefix = [owner.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
         match self {
-            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
-            Self::MultipleColumnFamilies { db, has_forward_cf, .. } => db.prefix_iterator_cf(has_forward_cf, &prefix),
+            Self::Single { db, .. } => db,
+            Self::MultipleColumnFamilies { db, .. } => db,
         }
+        .prefix_iterator_cf(self.has_forward_cf(), &prefix)
         .next()
         .and_then(Result::ok)
         .and_then(|(k, _)| <[u8; HasEdge::forward_encoding_size()]>::try_from(&*k).ok())
@@ -96,9 +97,10 @@ impl Storage {
     pub fn get_one_owner(&self, attribute: &Attribute) -> Option<Thing> {
         let prefix = [attribute.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
         match self {
-            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
-            Self::MultipleColumnFamilies { db, has_backward_cf, .. } => db.prefix_iterator_cf(has_backward_cf, &prefix),
+            Self::Single { db, .. } => db,
+            Self::MultipleColumnFamilies { db, .. } => db,
         }
+        .prefix_iterator_cf(self.has_backward_cf(), &prefix)
         .next()
         .and_then(Result::ok)
         .and_then(|(k, _)| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*k).ok())
@@ -114,11 +116,10 @@ impl Storage {
     ) -> impl Iterator<Item = Thing> + '_ {
         let prefix = [start.as_bytes() as &[u8], role_type.as_bytes(), relation_type.as_bytes()].concat();
         match self {
-            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
-            Self::MultipleColumnFamilies { db, relation_sibling_cf, .. } => {
-                db.prefix_iterator_cf(relation_sibling_cf, &prefix)
-            }
+            Self::Single { db, .. } => db,
+            Self::MultipleColumnFamilies { db, .. } => db,
         }
+        .prefix_iterator_cf(self.relation_sibling_cf(), &prefix)
         .filter_map(Result::ok)
         .filter_map(|(k, _)| <[u8; RelationSiblingEdge::encoding_size()]>::try_from(&*k).ok())
         .map(RelationSiblingEdge::from_bytes)
