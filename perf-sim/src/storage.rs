@@ -39,6 +39,29 @@ pub enum Storage {
 /// SAFETY ???
 unsafe impl Sync for Storage {}
 
+fn exact_prefix_iterator_cf<'a>(
+    db: &'a DB,
+    cf: &ColumnFamily,
+    prefix: Vec<u8>,
+) -> impl Iterator<Item = std::boxed::Box<[u8]>> + 'a {
+    db.prefix_iterator_cf(cf, &prefix)
+        .filter_map(Result::ok)
+        .take_while(move |(k, _)| k.len() >= prefix.len() && k[0..prefix.len()] == prefix)
+        .map(|(k, _)| k)
+}
+
+fn exact_prefix_iterator_cf_from<'a>(
+    db: &'a DB,
+    cf: &ColumnFamily,
+    prefix: Vec<u8>,
+    start: &[u8],
+) -> impl Iterator<Item = std::boxed::Box<[u8]>> + 'a {
+    db.prefix_iterator_cf(cf, start)
+        .filter_map(Result::ok)
+        .take_while(move |(k, _)| k.len() >= prefix.len() && k[0..prefix.len()] == prefix)
+        .map(|(k, _)| k)
+}
+
 impl Storage {
     pub fn new(storage_dir: &Path, mode: Mode) -> Self {
         if storage_dir.exists() {
@@ -82,30 +105,28 @@ impl Storage {
 
     pub fn get_one_has(&self, owner: Thing) -> Option<Attribute> {
         let prefix = [owner.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
-        match self {
+        let db = match self {
             Self::Single { db, .. } => db,
             Self::MultipleColumnFamilies { db, .. } => db,
-        }
-        .prefix_iterator_cf(self.has_forward_cf(), &prefix)
-        .next()
-        .and_then(Result::ok)
-        .and_then(|(k, _)| <[u8; HasEdge::forward_encoding_size()]>::try_from(&*k).ok())
-        .map(HasEdge::from_bytes_forward)
-        .map(|HasEdge { attr, .. }| attr)
+        };
+        exact_prefix_iterator_cf(db, self.has_forward_cf(), prefix)
+            .next()
+            .and_then(|k| <[u8; HasEdge::forward_encoding_size()]>::try_from(&*k).ok())
+            .map(HasEdge::from_bytes_forward)
+            .map(|HasEdge { attr, .. }| attr)
     }
 
     pub fn get_one_owner(&self, attribute: &Attribute) -> Option<Thing> {
         let prefix = [attribute.as_bytes() as &[u8], &[EdgeType::Has as u8]].concat();
-        match self {
+        let db = match self {
             Self::Single { db, .. } => db,
             Self::MultipleColumnFamilies { db, .. } => db,
-        }
-        .prefix_iterator_cf(self.has_backward_cf(), &prefix)
-        .next()
-        .and_then(Result::ok)
-        .and_then(|(k, _)| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*k).ok())
-        .map(HasEdge::from_bytes_backward)
-        .map(|HasEdge { owner, .. }| owner)
+        };
+        exact_prefix_iterator_cf(db, self.has_forward_cf(), prefix)
+            .next()
+            .and_then(|k| <[u8; HasEdge::backward_encoding_size()]>::try_from(&*k).ok())
+            .map(HasEdge::from_bytes_backward)
+            .map(|HasEdge { owner, .. }| owner)
     }
 
     pub fn iter_siblings(
@@ -114,32 +135,32 @@ impl Storage {
         role_type: Type,
         relation_type: Type,
     ) -> impl Iterator<Item = Thing> + '_ {
-        let prefix = [start.as_bytes() as &[u8], role_type.as_bytes(), relation_type.as_bytes()].concat();
-        match self {
+        let prefix =
+            [start.as_bytes() as &[u8], &[EdgeType::Sibling as u8], role_type.as_bytes(), relation_type.as_bytes()]
+                .concat();
+        let db = match self {
             Self::Single { db, .. } => db,
             Self::MultipleColumnFamilies { db, .. } => db,
-        }
-        .prefix_iterator_cf(self.relation_sibling_cf(), &prefix)
-        .filter_map(Result::ok)
-        .filter_map(|(k, _)| <[u8; RelationSiblingEdge::encoding_size()]>::try_from(&*k).ok())
-        .map(RelationSiblingEdge::from_bytes)
-        .map(|RelationSiblingEdge { rhs_player, .. }| rhs_player)
+        };
+        exact_prefix_iterator_cf(db, self.has_forward_cf(), prefix)
+            .filter_map(|k| <[u8; RelationSiblingEdge::encoding_size()]>::try_from(&*k).ok())
+            .map(RelationSiblingEdge::from_bytes)
+            .map(|RelationSiblingEdge { rhs_player, .. }| rhs_player)
     }
 
     pub fn get_random_sibling(&self, start: Thing, role_type: Type, relation_type: Type) -> Option<Thing> {
         let random_relation = Thing { type_: relation_type, thing_id: ThingID { id: thread_rng().gen() } };
         let prefix = [start.as_bytes() as &[u8], role_type.as_bytes(), random_relation.as_bytes()].concat();
-        match self {
-            Self::Single { db, cf } => db.prefix_iterator_cf(cf, &prefix),
-            Self::MultipleColumnFamilies { db, relation_sibling_cf, .. } => {
-                db.prefix_iterator_cf(relation_sibling_cf, &prefix)
-            }
-        }
-        .next()
-        .and_then(Result::ok)
-        .and_then(|(k, _)| <[u8; RelationSiblingEdge::encoding_size()]>::try_from(&*k).ok())
-        .map(RelationSiblingEdge::from_bytes)
-        .map(|RelationSiblingEdge { rhs_player, .. }| rhs_player)
+        let start = [&prefix as &[u8], &thread_rng().gen::<usize>().to_be_bytes()].concat();
+        let db = match self {
+            Self::Single { db, .. } => db,
+            Self::MultipleColumnFamilies { db, .. } => db,
+        };
+        exact_prefix_iterator_cf_from(db, self.has_forward_cf(), prefix, &start)
+            .next()
+            .and_then(|k| <[u8; RelationSiblingEdge::encoding_size()]>::try_from(&*k).ok())
+            .map(RelationSiblingEdge::from_bytes)
+            .map(|RelationSiblingEdge { rhs_player, .. }| rhs_player)
     }
 
     pub fn commit(&self, writer: WriteHandle) {

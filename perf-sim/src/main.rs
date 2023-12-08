@@ -36,7 +36,7 @@ impl FromStr for Mode {
 
 fn main() {
     let args = command!()
-        .arg(arg!(-b --batch-reads "Try to batch reads before writes").required(false).action(ArgAction::SetTrue))
+        .arg(arg!(-b --"batch-reads" "Try to batch reads before writes").required(false).action(ArgAction::SetTrue))
         .arg(
             arg!(-t --threads "Number of writer threads")
                 .required(false)
@@ -64,7 +64,7 @@ fn main() {
     let stop = AtomicBool::new(false);
 
     let Some(&num_threads) = args.get_one::<usize>("threads") else { panic!("could not get value of --threads") };
-    let batch_reads = args.get_one("batch_reads").copied().unwrap_or(false);
+    let batch_reads = args.get_one("batch-reads").copied().unwrap_or(false);
 
     #[rustfmt::skip]
     let supernodes = [
